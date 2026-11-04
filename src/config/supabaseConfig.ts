@@ -15,8 +15,8 @@
 
 export const DEFAULT_SUPABASE_CONFIG = {
   // Ejemplo: 'https://mbzldtqygryqevgoyekc.supabase.co'
-  url: '',
+  url: 'https://ewdttrocyanxqckbyujz.supabase.co',
 
   // Ejemplo: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
-  anonKey: '',
+  anonKey: 'sb_publishable_5471zqTqg-ZJ-AVT0c148A_tM0tReNB',
 };
