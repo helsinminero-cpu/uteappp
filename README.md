@@ -77,7 +77,8 @@ La aplicación está lista para desplegarse con 1 clic en **Cloudflare Pages**:
 2. En Cloudflare Dashboard: **Workers & Pages** > **Create application** > **Pages** > **Upload assets**.
 3. Arrastra la carpeta `dist/` generada.
 
-> **Reglas SPA automáticas:** Se incluyó el archivo `public/_redirects` (`/* /index.html 200`), asegurando que la navegación y recargas en Cloudflare Pages funcionen fluidamente sin errores 404.
+> **Nota sobre SPA en Cloudflare Pages:** Cloudflare Pages gestiona de forma nativa las aplicaciones SPA sirviendo `index.html` automáticamente. No se debe incluir un archivo `_redirects` con reglas globales hacia `index.html` ya que Cloudflare lo detecta como un bucle infinito (error code 100324).
+
 
 ## 🌐 Despliegue en GitHub Pages
 

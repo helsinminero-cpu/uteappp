@@ -3,20 +3,17 @@
   <head>
     <meta charset="utf-8">
     <title>Remix Gestor de Trámites PPP - UTEA Filial Cusco</title>
+    <meta http-equiv="refresh" content="0; url=./">
     <script type="text/javascript">
-      // Redirección automática de fallback para Single Page Application (SPA) en GitHub Pages
-      var pathSegmentsToKeep = 1;
-      var l = window.location;
-      l.replace(
-        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?p=/' +
-        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
-        (l.search ? '&q=' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-        l.hash
-      );
+      // Redirección segura para SPA tanto en dominio raíz (Cloudflare) como en subcarpetas (GitHub Pages)
+      var path = window.location.pathname;
+      if (path.length > 1) {
+        window.location.replace('./');
+      }
     </script>
   </head>
   <body>
-    <p>Redirigiendo al Gestor de Trámites PPP - UTEA...</p>
+    <p>Redirigiendo al Gestor de Trámites PPP...</p>
   </body>
 </html>
+
