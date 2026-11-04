@@ -108,6 +108,8 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
   const [isRenderingDocx, setIsRenderingDocx] = useState(false);
   const [storedTemplates, setStoredTemplates] = useState(() => getStoredDocxTemplates());
 
+  const tags = getTemplateTags(student, record);
+  const [viewMode, setViewMode] = useState<'docx' | 'standard'>('docx');
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -1009,49 +1011,131 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
         {/* Document Presentation (persistent container) */}
         <div className={!isEditing ? 'block' : 'hidden'}>
           <div>
+            {/* View Switcher if custom DOCX is loaded */}
+            {customDocxTemplate?.base64 && (
+              <div className="no-print flex items-center justify-between mb-3 bg-white p-2.5 rounded-xl border border-slate-200 text-xs">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <span className="font-semibold text-slate-900">Modo de Visualización:</span>
+                </div>
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('docx')}
+                    className={`px-3 py-1 font-semibold rounded-md transition-colors cursor-pointer ${
+                      viewMode === 'docx'
+                        ? 'bg-blue-900 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Vista Fiel DOCX Word
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('standard')}
+                    className={`px-3 py-1 font-semibold rounded-md transition-colors cursor-pointer ${
+                      viewMode === 'standard'
+                        ? 'bg-blue-900 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Vista Institucional A4
+                  </button>
+                </div>
+              </div>
+            )}
+
             {isRenderingDocx && (
-              <div className="flex items-center justify-center p-8 bg-white rounded-2xl border border-slate-200 gap-3 text-slate-600 text-sm mb-4 shadow-2xs no-print">
+              <div className="flex items-center justify-center p-6 bg-white rounded-2xl border border-slate-200 gap-3 text-slate-600 text-sm mb-4 shadow-2xs no-print">
                 <Loader2 className="w-5 h-5 animate-spin text-blue-900" />
-                <span>Aplicando datos del alumno y renderizando plantilla Word (.docx)...</span>
+                <span>Aplicando datos del alumno y renderizando plantilla...</span>
               </div>
             )}
 
-            {!customDocxTemplate?.base64 && !isRenderingDocx && (
-              <div className="bg-white border-2 border-dashed border-blue-200 rounded-2xl p-8 sm:p-12 text-center shadow-xs space-y-4 no-print my-4">
-                <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-900 flex items-center justify-center mx-auto shadow-inner">
-                  <Upload className="w-8 h-8 text-blue-800" />
-                </div>
-                <div className="max-w-md mx-auto space-y-1.5">
-                  <h3 className="text-base font-bold text-slate-900">
-                    Aún no has subido la plantilla Word (.docx) para este documento
-                  </h3>
-                  <p className="text-xs text-slate-600 leading-relaxed">
-                    Sube el archivo Word (.docx) oficial que deseas utilizar para <strong>{currentTitle}</strong>. El sistema lo guardará en tu navegador y rellenará automáticamente los campos del estudiante.
-                  </p>
-                </div>
-                <div className="pt-2">
-                  <label className="cursor-pointer inline-flex items-center gap-2 px-6 py-3 bg-blue-900 hover:bg-blue-950 text-white rounded-xl text-xs font-bold shadow-md transition-all">
-                    <Upload className="w-4 h-4 text-amber-400" />
-                    <span>Seleccionar y Subir Plantilla .docx</span>
-                    <input
-                      type="file"
-                      accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                      onChange={handleDirectUpload}
-                      disabled={uploadLoading}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* Contenedor Fiel Oficial DOCX */}
+            {/* Contenedor DOCX (docx-preview) */}
             <div
               ref={docxContainerRef}
-              className={`docx-preview-wrapper ${customDocxTemplate?.base64 ? 'block' : 'hidden'} bg-slate-200/50 p-2 sm:p-5 rounded-2xl overflow-x-auto shadow-inner print:p-0 print:bg-white print:shadow-none min-h-[400px]`}
+              className={`docx-preview-wrapper ${customDocxTemplate?.base64 && viewMode === 'docx' ? 'block' : 'hidden'} bg-slate-200/50 p-2 sm:p-5 rounded-2xl overflow-x-auto shadow-inner print:p-0 print:bg-white print:shadow-none min-h-[400px] mb-4`}
             />
+
+            {/* Vista Institucional Oficial A4 (Garantiza que la vista SIEMPRE se genere y se pueda leer e imprimir) */}
+            {(!customDocxTemplate?.base64 || viewMode === 'standard' || !renderedWithDocx) && (
+              <div className="space-y-4">
+                {!customDocxTemplate?.base64 && (
+                  <div className="no-print bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
+                      <span>
+                        Mostrando <strong>documento oficial generado automáticamente</strong> con los datos del alumno.
+                      </span>
+                    </div>
+                    {isAdmin && (
+                      <span className="text-[11px] text-blue-700 bg-white/70 px-2.5 py-1 rounded-md border border-blue-200 font-medium">
+                        Opcional: puedes subir una plantilla .docx personalizada en la barra superior.
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div 
+                  id="utea-official-document-sheet"
+                  className="bg-white border border-slate-300 rounded-2xl p-8 sm:p-14 shadow-md font-serif text-slate-900 max-w-3xl mx-auto leading-relaxed print:border-none print:shadow-none print:p-0 print:m-0"
+                >
+                  {/* Membrete Institucional Centrado con Escudo Oficial UTEA */}
+                  <div className="text-center pb-4 mb-6 border-b-2 border-slate-900/90">
+                    <div className="flex justify-center mb-3">
+                      <img
+                        src={`data:image/png;base64,${UTEA_LOGO_BASE64}`}
+                        alt="Escudo Oficial UTEA"
+                        className="w-16 h-20 object-contain drop-shadow-xs"
+                      />
+                    </div>
+                    <div className="text-sm sm:text-base font-bold tracking-wider uppercase text-slate-950 font-sans">
+                      Universidad Tecnológica de los Andes
+                    </div>
+                    <div className="text-xs sm:text-sm font-semibold text-slate-800 font-sans mt-0.5">
+                      Filial Cusco · Facultad de Ingeniería
+                    </div>
+                    <div className="text-xs sm:text-sm font-bold text-blue-950 font-sans">
+                      Escuela Profesional de Ingeniería Civil
+                    </div>
+                    <div className="text-[11px] italic text-slate-600 mt-1 font-sans">
+                      "Año de la Esperanza y el Fortalecimiento de la Democracia"
+                    </div>
+                  </div>
+
+                  {/* Título Oficial del Documento */}
+                  <div className="text-center mb-6">
+                    <h2 className="text-sm sm:text-base font-bold uppercase tracking-wider underline underline-offset-4 text-slate-950 font-sans">
+                      {currentTitle}
+                    </h2>
+                  </div>
+
+                  {/* Cuerpo del Documento con etiquetas del alumno en Negrita */}
+                  <div className="text-xs sm:text-sm whitespace-pre-wrap font-document text-slate-900 leading-relaxed text-justify space-y-3">
+                    {renderTextWithBoldTags(currentContent, tags)}
+                  </div>
+
+                  {/* Bloque Oficial de Firmas y Sellos */}
+                  <div className="mt-16 pt-8 grid grid-cols-1 sm:grid-cols-2 gap-8 text-center text-xs font-sans text-slate-800">
+                    <div>
+                      <div className="border-t border-slate-700 w-44 mx-auto mb-1"></div>
+                      <div className="font-bold text-slate-950">Comisión de Prácticas Pre-Profesionales</div>
+                      <div className="text-[11px] text-slate-600">Escuela Profesional de Ingeniería Civil</div>
+                      <div className="text-[11px] text-slate-600">UTEA - Filial Cusco</div>
+                    </div>
+                    <div>
+                      <div className="border-t border-slate-700 w-44 mx-auto mb-1"></div>
+                      <div className="font-bold text-slate-950">Sub Dirección de Escuela</div>
+                      <div className="text-[11px] text-slate-600">Escuela Profesional de Ingeniería Civil</div>
+                      <div className="text-[11px] text-slate-600">UTEA - Filial Cusco</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import PizZip from 'pizzip';
 import { TemplateKey, generateDocxFromTemplate } from './docxEngine';
+import { OFFICIAL_TEMPLATES } from '../data/officialTemplates';
 
 export interface StoredTemplateItem {
   base64: string;
@@ -238,7 +239,7 @@ export function getActiveTemplateText(key: TemplateKey): string {
     }
   }
 
-  return '';
+  return OFFICIAL_TEMPLATES[key] || '';
 }
 
 /**
