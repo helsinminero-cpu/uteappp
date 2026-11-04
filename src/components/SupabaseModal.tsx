@@ -23,6 +23,7 @@ import {
   testSupabaseConnection, 
   sanitizeSupabaseUrl,
   sanitizeSupabaseKey,
+  generateSupabaseShareLink,
   SUPABASE_INIT_SQL,
   ConnectionTestResult 
 } from '../lib/supabase';
@@ -54,6 +55,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedMagicLink, setCopiedMagicLink] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showSqlPreview, setShowSqlPreview] = useState(false);
@@ -126,7 +128,27 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
 
     if (result.success) {
       saveSupabaseConfig(result.cleanedUrl || cleanUrl, cleanKey);
-      setSyncStatus('¡Configuración guardada y conexión activa! Ahora todos los cambios se compartirán entre todas las máquinas en tiempo real.');
+      setSyncStatus('¡Conexión exitosa! Sincronizando datos locales con la base de datos...');
+      try {
+        const sOk = await syncAllStudentsToSupabase(students);
+        const tOk = await syncAllTramitesToSupabase(tramites);
+        if (sOk && tOk) {
+          setSyncStatus(`¡Listo! Se guardó la conexión y se sincronizaron ${students.length} alumnos y ${tramites.length} trámites en la nube. ¡Ya están disponibles para otras computadoras!`);
+        } else {
+          setSyncStatus('¡Conexión guardada y activa! Las tablas están listas.');
+        }
+      } catch {
+        setSyncStatus('¡Conexión guardada y activa!');
+      }
+    }
+  };
+
+  const handleCopyMagicLink = () => {
+    const link = generateSupabaseShareLink();
+    if (link) {
+      navigator.clipboard.writeText(link);
+      setCopiedMagicLink(true);
+      setTimeout(() => setCopiedMagicLink(false), 3500);
     }
   };
 
@@ -359,6 +381,40 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
             </div>
           </div>
 
+          {/* Magic Link for Instant Multi-Computer Connection */}
+          {isConfigured && (
+            <div className="p-4 bg-gradient-to-r from-emerald-950 via-teal-900 to-slate-900 text-white rounded-xl shadow-md border border-emerald-500/30 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+                  <span className="text-xs font-bold uppercase tracking-wide text-emerald-300">
+                    Enlace Mágico para Otras Computadoras
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyMagicLink}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition-colors shadow-xs"
+                >
+                  {copiedMagicLink ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      ¡Enlace Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      Copiar Enlace de Conexión
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-xs text-emerald-100/90 leading-relaxed">
+                ¡Esta es la forma más rápida de sincronizar otra computadora! Envía este enlace por WhatsApp o ábrelo en la otra PC. <strong>Se conectará automáticamente sin tener que ingresar la URL ni la clave.</strong>
+              </p>
+            </div>
+          )}
+
           {/* Sync actions if configured */}
           {isConfigured && (
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
@@ -391,6 +447,25 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Cloudflare Pages Global Auto-Connect Guide */}
+          <div className="p-4 bg-slate-100 border border-slate-200 rounded-xl space-y-2 text-xs">
+            <h4 className="font-bold text-slate-800 uppercase tracking-wide text-[11px] flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5 text-blue-700" />
+              ¿Quieres conexión 100% automática en Cloudflare Pages para todos?
+            </h4>
+            <p className="text-slate-600 leading-relaxed text-[11px]">
+              Para que <strong>cualquier persona</strong> que abra <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800 font-mono">uteapracticas.pages.dev</code> quede conectada automáticamente sin configurar nada:
+            </p>
+            <div className="bg-slate-900 text-emerald-400 p-2.5 rounded-lg font-mono text-[11px] space-y-1 overflow-x-auto">
+              <div># En Cloudflare Pages &gt; Settings &gt; Environment variables:</div>
+              <div>VITE_SUPABASE_URL = {url || 'https://tu-proyecto.supabase.co'}</div>
+              <div>VITE_SUPABASE_ANON_KEY = {anonKey || 'eyJhbGciOiJIUzI1Ni...'}</div>
+            </div>
+            <p className="text-[10px] text-slate-500">
+              Guarda las variables y haz un Redeploy en Cloudflare. A partir de ese momento, ningún alumno ni docente necesitará configurar Supabase en su máquina.
+            </p>
+          </div>
 
           {/* SQL Setup Helper */}
           <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">

@@ -146,7 +146,7 @@ export async function upsertStudentToSupabase(student: Student): Promise<boolean
 }
 
 /**
- * Upsert a batch of students to Supabase
+ * Upsert a batch of students to Supabase with fallback to individual items
  */
 export async function syncAllStudentsToSupabase(students: Student[]): Promise<boolean> {
   const client = getSupabaseClient();
@@ -155,13 +155,31 @@ export async function syncAllStudentsToSupabase(students: Student[]): Promise<bo
   try {
     const rows = students.map(studentToRow);
     const { error } = await client.from('students').upsert(rows, { onConflict: 'id' });
-    if (error) {
-      console.warn('Error batch syncing students to Supabase:', error);
-      return false;
+    if (!error) return true;
+
+    console.warn('Batch student upsert failed, retrying individually:', error.message);
+    let anySuccess = false;
+    for (const s of students) {
+      const ok = await upsertStudentToSupabase(s);
+      if (ok) anySuccess = true;
     }
-    return true;
+    return anySuccess;
   } catch (err) {
     console.warn('Supabase students batch sync exception:', err);
+    return false;
+  }
+}
+
+/**
+ * Delete a student from Supabase
+ */
+export async function deleteStudentFromSupabase(studentId: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+  try {
+    const { error } = await client.from('students').delete().eq('id', studentId);
+    return !error;
+  } catch {
     return false;
   }
 }
@@ -188,7 +206,21 @@ export async function upsertTramiteToSupabase(tramite: TramiteRecord): Promise<b
 }
 
 /**
- * Upsert a batch of trámites to Supabase
+ * Delete a tramite from Supabase
+ */
+export async function deleteTramiteFromSupabase(tramiteId: string): Promise<boolean> {
+  const client = getSupabaseClient();
+  if (!client) return false;
+  try {
+    const { error } = await client.from('tramites').delete().eq('id', tramiteId);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Upsert a batch of trámites to Supabase with fallback to individual items
  */
 export async function syncAllTramitesToSupabase(tramites: TramiteRecord[]): Promise<boolean> {
   const client = getSupabaseClient();
@@ -197,11 +229,15 @@ export async function syncAllTramitesToSupabase(tramites: TramiteRecord[]): Prom
   try {
     const rows = tramites.map(tramiteToRow);
     const { error } = await client.from('tramites').upsert(rows, { onConflict: 'id' });
-    if (error) {
-      console.warn('Error batch syncing tramites to Supabase:', error);
-      return false;
+    if (!error) return true;
+
+    console.warn('Batch tramites upsert failed, retrying individually:', error.message);
+    let anySuccess = false;
+    for (const t of tramites) {
+      const ok = await upsertTramiteToSupabase(t);
+      if (ok) anySuccess = true;
     }
-    return true;
+    return anySuccess;
   } catch (err) {
     console.warn('Supabase tramites batch sync exception:', err);
     return false;
@@ -260,13 +296,14 @@ export async function fetchTemplatesFromSupabase(): Promise<Array<{ key: string;
 export function subscribeToSupabaseRealtime(
   onStudentChanged: (student: Student, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
   onTramiteChanged: (tramite: TramiteRecord, eventType: 'INSERT' | 'UPDATE' | 'DELETE') => void,
-  onTemplateChanged?: (key: string, base64: string) => void
+  onTemplateChanged?: (key: string, base64: string) => void,
+  onStatusChange?: (status: 'SUBSCRIBED' | 'TIMED_OUT' | 'CHANNEL_ERROR' | 'CLOSED') => void
 ): () => void {
   const client = getSupabaseClient();
   if (!client) return () => {};
 
   const channel = client
-    .channel('utea-ppp-realtime')
+    .channel('utea-ppp-realtime-channel')
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'students' },
@@ -305,7 +342,12 @@ export function subscribeToSupabaseRealtime(
         }
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log('📡 Realtime status:', status);
+      if (onStatusChange) {
+        onStatusChange(status as any);
+      }
+    });
 
   return () => {
     try {

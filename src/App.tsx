@@ -64,9 +64,43 @@ export default function App() {
     initTemplateStorage();
   }, []);
 
-  // Supabase Real-Time Multi-Machine Synchronization
+  // Supabase Dual-Sync: Realtime WebSockets + Auto-polling + Focus Revalidation
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
+    let pollTimer: any = null;
+
+    // Core function to fetch and sync latest state from Supabase
+    const pollRemoteSync = async () => {
+      const config = getSupabaseConfig();
+      if (!config.isConfigured) return;
+
+      try {
+        const [remoteStudents, remoteTramites] = await Promise.all([
+          fetchStudentsFromSupabase(),
+          fetchTramitesFromSupabase(),
+        ]);
+
+        if (remoteStudents !== null) {
+          setStudents((prev) => {
+            if (JSON.stringify(prev) !== JSON.stringify(remoteStudents)) {
+              return remoteStudents;
+            }
+            return prev;
+          });
+        }
+
+        if (remoteTramites !== null) {
+          setTramites((prev) => {
+            if (JSON.stringify(prev) !== JSON.stringify(remoteTramites)) {
+              return remoteTramites;
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        console.debug('Error en sondeo de sincronización:', err);
+      }
+    };
 
     const initSupabaseSync = async () => {
       const config = getSupabaseConfig();
@@ -100,7 +134,7 @@ export default function App() {
           }
         }
 
-        // Live Realtime Subscription: listens to any changes from other computers
+        // 1. Live Realtime Subscription: listens to any changes from other computers
         unsubscribe = subscribeToSupabaseRealtime(
           (student, eventType) => {
             setStudents((prev) => {
@@ -134,6 +168,11 @@ export default function App() {
             saveDocxTemplateAsync(templateKey as any, base64, `${templateKey}.docx`);
           }
         );
+
+        // 2. Background Auto-Poll every 8 seconds (ensures sync even if WebSockets are throttled)
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(pollRemoteSync, 8000);
+
       } catch (err) {
         console.warn('Error inicializando sincronización con Supabase:', err);
       }
@@ -141,15 +180,36 @@ export default function App() {
 
     initSupabaseSync();
 
+    // Revalidate immediately when returning to tab or regaining internet connection
+    const handleRevalidate = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        pollRemoteSync();
+      }
+    };
+
+    const handleManualSync = () => {
+      pollRemoteSync();
+    };
+
     const handleConfigChange = () => {
       if (unsubscribe) unsubscribe();
+      if (pollTimer) clearInterval(pollTimer);
       initSupabaseSync();
     };
 
+    window.addEventListener('focus', handleRevalidate);
+    document.addEventListener('visibilitychange', handleRevalidate);
+    window.addEventListener('online', handleRevalidate);
+    window.addEventListener('utea_trigger_manual_sync', handleManualSync);
     window.addEventListener('utea_supabase_config_changed', handleConfigChange);
 
     return () => {
       if (unsubscribe) unsubscribe();
+      if (pollTimer) clearInterval(pollTimer);
+      window.removeEventListener('focus', handleRevalidate);
+      document.removeEventListener('visibilitychange', handleRevalidate);
+      window.removeEventListener('online', handleRevalidate);
+      window.removeEventListener('utea_trigger_manual_sync', handleManualSync);
       window.removeEventListener('utea_supabase_config_changed', handleConfigChange);
     };
   }, []);

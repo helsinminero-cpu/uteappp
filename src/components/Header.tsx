@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, UserPlus, Shield, LogOut, GraduationCap, ChevronRight, Database, FileCheck2 } from 'lucide-react';
+import { FileText, UserPlus, Shield, LogOut, GraduationCap, ChevronRight, Database, FileCheck2, RefreshCw } from 'lucide-react';
 import { Student } from '../types';
 import { UTEA_LOGO_DATA_URL } from '../data/uteaLogoData';
 
@@ -29,6 +29,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [isSupabaseConfigured, setIsSupabaseConfigured] = React.useState<boolean>(
     () => getSupabaseConfig().isConfigured
   );
+  const [isSyncingNow, setIsSyncingNow] = React.useState(false);
 
   React.useEffect(() => {
     const handleConfigChange = () => {
@@ -39,6 +40,13 @@ export const Header: React.FC<HeaderProps> = ({
       window.removeEventListener('utea_supabase_config_changed', handleConfigChange);
     };
   }, []);
+
+  const handleManualSyncClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsSyncingNow(true);
+    window.dispatchEvent(new CustomEvent('utea_trigger_manual_sync'));
+    setTimeout(() => setIsSyncingNow(false), 1200);
+  };
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40 no-print shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -126,29 +134,42 @@ export const Header: React.FC<HeaderProps> = ({
             ) : null}
 
             {/* Cloud Sync Supabase Button */}
-            <button
-              onClick={onOpenSupabaseModal}
-              className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all shadow-2xs flex items-center gap-1.5 ${
-                isSupabaseConfigured
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                  : 'bg-white text-slate-700 hover:text-emerald-700 border-slate-200 hover:border-emerald-300'
-              }`}
-              title={
-                isSupabaseConfigured
-                  ? 'Supabase Conectado: Sincronización en tiempo real activa entre todas las computadoras'
-                  : 'Conectar a Supabase para sincronizar modificaciones entre todas las computadoras'
-              }
-            >
-              <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  isSupabaseConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onOpenSupabaseModal}
+                className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all shadow-2xs flex items-center gap-1.5 ${
+                  isSupabaseConfigured
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                    : 'bg-white text-slate-700 hover:text-emerald-700 border-slate-200 hover:border-emerald-300'
                 }`}
-              />
-              <Database className={`w-3.5 h-3.5 ${isSupabaseConfigured ? 'text-emerald-600' : 'text-slate-500'}`} />
-              <span className="hidden sm:inline">
-                {isSupabaseConfigured ? 'Supabase Activo' : 'Conectar Supabase'}
-              </span>
-            </button>
+                title={
+                  isSupabaseConfigured
+                    ? 'Supabase Conectado: Sincronización en tiempo real activa entre todas las computadoras'
+                    : 'Conectar a Supabase para sincronizar modificaciones entre todas las computadoras'
+                }
+              >
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    isSupabaseConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                  }`}
+                />
+                <Database className={`w-3.5 h-3.5 ${isSupabaseConfigured ? 'text-emerald-600' : 'text-slate-500'}`} />
+                <span className="hidden sm:inline">
+                  {isSupabaseConfigured ? 'Supabase Activo' : 'Conectar Supabase'}
+                </span>
+              </button>
+
+              {isSupabaseConfigured && (
+                <button
+                  type="button"
+                  onClick={handleManualSyncClick}
+                  className="p-1.5 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-200 bg-white"
+                  title="Sincronizar ahora con la nube"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingNow ? 'animate-spin text-emerald-600' : ''}`} />
+                </button>
+              )}
+            </div>
 
             {/* Administrator Section */}
             {isAdminLoggedIn ? (

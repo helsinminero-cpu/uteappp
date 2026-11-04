@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { DEFAULT_SUPABASE_CONFIG } from '../config/supabaseConfig';
 
 const STORAGE_KEY = 'utea_supabase_credentials_v1';
 
@@ -64,22 +65,65 @@ export function sanitizeSupabaseKey(rawKey: string): string {
   return key;
 }
 
+/**
+ * Generates a shareable URL containing the Supabase credentials so any other computer
+ * or phone can connect in 1 click without manually entering credentials.
+ */
+export function generateSupabaseShareLink(): string {
+  const config = getSupabaseConfig();
+  if (!config.isConfigured || typeof window === 'undefined') return '';
+  const base = window.location.origin + window.location.pathname;
+  return `${base}?sb_url=${encodeURIComponent(config.url)}&sb_key=${encodeURIComponent(config.anonKey)}`;
+}
+
 export function getSupabaseConfig(): SupabaseConfig {
   if (cachedConfig) return cachedConfig;
 
   let url = '';
   let anonKey = '';
 
-  // 1. Check localStorage first (user-configured in UI)
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      url = sanitizeSupabaseUrl(parsed.url || '');
-      anonKey = sanitizeSupabaseKey(parsed.anonKey || '');
+  // 0. Check URL search parameters for Magic Link (e.g. ?sb_url=...&sb_key=...)
+  if (typeof window !== 'undefined') {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const paramUrl = searchParams.get('sb_url') || searchParams.get('supabase_url');
+      const paramKey = searchParams.get('sb_key') || searchParams.get('supabase_key') || searchParams.get('supabase_anon');
+
+      if (paramUrl && paramKey) {
+        url = sanitizeSupabaseUrl(paramUrl);
+        anonKey = sanitizeSupabaseKey(paramKey);
+        if (url && anonKey) {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify({ url, anonKey }));
+          } catch {
+            // ignore
+          }
+          // Clean parameters from address bar cleanly without page reload
+          try {
+            const cleanPath = window.location.pathname + (window.location.hash || '');
+            window.history.replaceState({}, document.title, cleanPath);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch {
+      // ignore
     }
-  } catch {
-    // ignore
+  }
+
+  // 1. Check localStorage (user-configured or saved via Magic Link)
+  if (!url || !anonKey) {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        url = sanitizeSupabaseUrl(parsed.url || '');
+        anonKey = sanitizeSupabaseKey(parsed.anonKey || '');
+      }
+    } catch {
+      // ignore
+    }
   }
 
   // 2. Fallback to Vite environment variables
@@ -88,6 +132,14 @@ export function getSupabaseConfig(): SupabaseConfig {
   }
   if (!anonKey && typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) {
     anonKey = sanitizeSupabaseKey(String(import.meta.env.VITE_SUPABASE_ANON_KEY));
+  }
+
+  // 3. Fallback to default configuration committed to the repository (src/config/supabaseConfig.ts)
+  if (!url && DEFAULT_SUPABASE_CONFIG?.url) {
+    url = sanitizeSupabaseUrl(DEFAULT_SUPABASE_CONFIG.url);
+  }
+  if (!anonKey && DEFAULT_SUPABASE_CONFIG?.anonKey) {
+    anonKey = sanitizeSupabaseKey(DEFAULT_SUPABASE_CONFIG.anonKey);
   }
 
   const isConfigured = Boolean(url && anonKey && url.startsWith('http'));
