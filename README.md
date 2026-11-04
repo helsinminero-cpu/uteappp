@@ -51,6 +51,34 @@ Para que cualquier alumno registrado, trámite emitido o plantilla Word modifica
    - **Anon Public Key** (clave pública `eyJhb...`)
 4. Haz clic en **Probar y Guardar Conexión**. A partir de ese momento, **cualquier cambio en cualquier máquina se sincroniza al instante para todos mediante WebSockets en tiempo real**.
 
+## ☁️ Despliegue en Cloudflare Pages (Cloudflare Sites)
+
+La aplicación está lista para desplegarse con 1 clic en **Cloudflare Pages**:
+
+### Método 1: Conectando tu repositorio de GitHub (Recomendado)
+1. Inicia sesión en tu panel de [Cloudflare](https://dash.cloudflare.com/) y dirígete a **Workers & Pages** > **Create application** > **Pages** > **Connect to Git**.
+2. Selecciona tu repositorio de GitHub.
+3. En la configuración de compilación (**Build settings**):
+   - **Framework preset**: `Vite`
+   - **Build command**: `npm run build`
+   - **Build output directory**: `dist`
+   - **Root directory**: `/` (dejar en blanco o raíz)
+4. (Opcional) En **Environment variables**, añade:
+   - `VITE_SUPABASE_URL`: Tu URL del proyecto Supabase.
+   - `VITE_SUPABASE_ANON_KEY`: Tu clave anónima pública de Supabase.
+   *(También puedes conectarlo directamente desde el botón "Conectar Supabase" en la barra superior de la app).*
+5. Haz clic en **Save and Deploy**. En menos de 1 minuto tendrás tu dominio activo (ejemplo: `https://tramites-utea.pages.dev`).
+
+### Método 2: Subida Directa (Direct Upload / Wrangler)
+1. En tu máquina ejecuta:
+   ```bash
+   npm run build
+   ```
+2. En Cloudflare Dashboard: **Workers & Pages** > **Create application** > **Pages** > **Upload assets**.
+3. Arrastra la carpeta `dist/` generada.
+
+> **Reglas SPA automáticas:** Se incluyó el archivo `public/_redirects` (`/* /index.html 200`), asegurando que la navegación y recargas en Cloudflare Pages funcionen fluidamente sin errores 404.
+
 ## 🌐 Despliegue en GitHub Pages
 
 Este proyecto está 100% configurado para ejecutarse de manera estática y autónoma en **GitHub Pages**:
@@ -62,3 +90,4 @@ Este proyecto está 100% configurado para ejecutarse de manera estática y autó
    `https://<tu-usuario>.github.io/<nombre-repositorio>/`
 
 > **Nota:** La aplicación opera 100% en el navegador (Client-Side). La generación de plantillas Word (.docx), visualización en pantalla y exportación de PDFs vectoriales de alta fidelidad se ejecutan directamente en el navegador del usuario sin requerir servidores externos ni costes de hosting.
+
