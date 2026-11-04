@@ -11,6 +11,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "docx-preview": "^0.3.3",
     "docxtemplater": "^3.50.0",
     "express": "^5.3.0",

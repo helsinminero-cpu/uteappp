@@ -3,6 +3,8 @@ import { FileText, UserPlus, Shield, LogOut, GraduationCap, ChevronRight, Databa
 import { Student } from '../types';
 import { UTEA_LOGO_DATA_URL } from '../data/uteaLogoData';
 
+import { getSupabaseConfig } from '../lib/supabase';
+
 interface HeaderProps {
   currentView: 'home' | 'registro' | 'tramites' | 'admin';
   setCurrentView: (view: 'home' | 'registro' | 'tramites' | 'admin') => void;
@@ -11,6 +13,7 @@ interface HeaderProps {
   isAdminLoggedIn: boolean;
   onLogoutAdmin: () => void;
   onOpenBackupModal: () => void;
+  onOpenSupabaseModal: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,7 +24,21 @@ export const Header: React.FC<HeaderProps> = ({
   isAdminLoggedIn,
   onLogoutAdmin,
   onOpenBackupModal,
+  onOpenSupabaseModal,
 }) => {
+  const [isSupabaseConfigured, setIsSupabaseConfigured] = React.useState<boolean>(
+    () => getSupabaseConfig().isConfigured
+  );
+
+  React.useEffect(() => {
+    const handleConfigChange = () => {
+      setIsSupabaseConfigured(getSupabaseConfig().isConfigured);
+    };
+    window.addEventListener('utea_supabase_config_changed', handleConfigChange);
+    return () => {
+      window.removeEventListener('utea_supabase_config_changed', handleConfigChange);
+    };
+  }, []);
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40 no-print shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -108,6 +125,31 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             ) : null}
 
+            {/* Cloud Sync Supabase Button */}
+            <button
+              onClick={onOpenSupabaseModal}
+              className={`px-2.5 py-1.5 text-xs font-semibold rounded-xl border transition-all shadow-2xs flex items-center gap-1.5 ${
+                isSupabaseConfigured
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                  : 'bg-white text-slate-700 hover:text-emerald-700 border-slate-200 hover:border-emerald-300'
+              }`}
+              title={
+                isSupabaseConfigured
+                  ? 'Supabase Conectado: Sincronización en tiempo real activa entre todas las computadoras'
+                  : 'Conectar a Supabase para sincronizar modificaciones entre todas las computadoras'
+              }
+            >
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  isSupabaseConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                }`}
+              />
+              <Database className={`w-3.5 h-3.5 ${isSupabaseConfigured ? 'text-emerald-600' : 'text-slate-500'}`} />
+              <span className="hidden sm:inline">
+                {isSupabaseConfigured ? 'Supabase Activo' : 'Conectar Supabase'}
+              </span>
+            </button>
+
             {/* Administrator Section */}
             {isAdminLoggedIn ? (
               <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
@@ -118,7 +160,7 @@ export const Header: React.FC<HeaderProps> = ({
                   title="Exportar o importar copia de seguridad local (JSON)"
                 >
                   <Database className="w-3.5 h-3.5 text-blue-700" />
-                  <span className="hidden sm:inline">Copia de Seguridad</span>
+                  <span className="hidden md:inline">Copia de Seguridad</span>
                 </button>
 
                 <button

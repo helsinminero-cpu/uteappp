@@ -37,7 +37,19 @@ Sistema web interactivo para la gestión y generación automatizada de informes 
 - **Estilos**: Tailwind CSS v4
 - **Iconos**: Lucide React
 - **Manipulación de Documentos**: `docxtemplater`, `pizzip`, `docx-preview`, `jspdf`, `html2canvas-pro`
+- **Base de Datos y Tiempo Real (Multi-máquina)**: `@supabase/supabase-js` (PostgreSQL + Realtime WebSockets)
 - **Autenticación e Integración**: Firebase SDK
+
+## ⚡ Conexión a Supabase (Sincronización en Tiempo Real para todas las máquinas)
+
+Para que cualquier alumno registrado, trámite emitido o plantilla Word modificada esté disponible instantáneamente para todas las personas en cualquier computadora:
+
+1. Crea una cuenta gratuita en [supabase.com](https://supabase.com) y crea un nuevo proyecto.
+2. En Supabase, ve a **SQL Editor** > **New Query**, pega el script generado por la aplicación (botón **Copiar Script SQL**) y pulsa **Run**.
+3. En la aplicación (o en tu archivo `.env`), pulsa el botón **Conectar Supabase** e introduce:
+   - **Project URL** (ej: `https://xyz.supabase.co`)
+   - **Anon Public Key** (clave pública `eyJhb...`)
+4. Haz clic en **Probar y Guardar Conexión**. A partir de ese momento, **cualquier cambio en cualquier máquina se sincroniza al instante para todos mediante WebSockets en tiempo real**.
 
 ## 🌐 Despliegue en GitHub Pages
 

@@ -13,8 +13,21 @@ import { StudentPortal } from './components/StudentPortal';
 import { AdminPortal } from './components/AdminPortal';
 import { DocumentViewer } from './components/DocumentViewer';
 import { BackupModal } from './components/BackupModal';
+import { SupabaseModal } from './components/SupabaseModal';
 import { scheduleDriveAutoSync } from './utils/driveAutoSync';
-import { initTemplateStorage } from './utils/docxEngine';
+import { initTemplateStorage, getActiveDocxTemplateAsync, saveDocxTemplateAsync } from './utils/docxEngine';
+import { getSupabaseConfig } from './lib/supabase';
+import {
+  fetchStudentsFromSupabase,
+  fetchTramitesFromSupabase,
+  upsertStudentToSupabase,
+  upsertTramiteToSupabase,
+  syncAllStudentsToSupabase,
+  syncAllTramitesToSupabase,
+  subscribeToSupabaseRealtime,
+  upsertTemplateToSupabase,
+  fetchTemplatesFromSupabase,
+} from './utils/supabaseSync';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'home' | 'registro' | 'tramites' | 'admin'>('home');
@@ -26,13 +39,14 @@ export default function App() {
     return sessionStorage.getItem('utea_admin_auth') === 'true';
   });
 
-  // Modal state for Document Viewer and Local Backup
+  // Modal state for Document Viewer, Local Backup, and Supabase
   const [viewingDocState, setViewingDocState] = useState<{
     student: Student;
     record: TramiteRecord;
   } | null>(null);
 
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   // Sync state changes to storage and schedule Google Drive backup
   useEffect(() => {
@@ -50,10 +64,111 @@ export default function App() {
     initTemplateStorage();
   }, []);
 
-  // Listen for template changes to automatically back up templates to Google Drive
+  // Supabase Real-Time Multi-Machine Synchronization
   useEffect(() => {
-    const handleTemplateUpdated = () => {
+    let unsubscribe: (() => void) | null = null;
+
+    const initSupabaseSync = async () => {
+      const config = getSupabaseConfig();
+      if (!config.isConfigured) return;
+
+      try {
+        const [remoteStudents, remoteTramites] = await Promise.all([
+          fetchStudentsFromSupabase(),
+          fetchTramitesFromSupabase(),
+        ]);
+
+        if (remoteStudents !== null && remoteTramites !== null) {
+          if (remoteStudents.length > 0 || remoteTramites.length > 0) {
+            // Supabase already has data: sync to this machine
+            setStudents(remoteStudents);
+            setTramites(remoteTramites);
+          } else if (students.length > 0 || tramites.length > 0) {
+            // Supabase empty: seed from current local data
+            await syncAllStudentsToSupabase(students);
+            await syncAllTramitesToSupabase(tramites);
+          }
+        }
+
+        // Sync remote templates from Supabase to this machine
+        const remoteTemplates = await fetchTemplatesFromSupabase();
+        if (remoteTemplates && remoteTemplates.length > 0) {
+          for (const tpl of remoteTemplates) {
+            if (tpl.key && tpl.base64) {
+              await saveDocxTemplateAsync(tpl.key as any, tpl.base64, tpl.name || `${tpl.key}.docx`);
+            }
+          }
+        }
+
+        // Live Realtime Subscription: listens to any changes from other computers
+        unsubscribe = subscribeToSupabaseRealtime(
+          (student, eventType) => {
+            setStudents((prev) => {
+              if (eventType === 'DELETE') {
+                return prev.filter((s) => s.id !== student.id);
+              }
+              const idx = prev.findIndex((s) => s.id === student.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = student;
+                return next;
+              }
+              return [student, ...prev];
+            });
+          },
+          (tramite, eventType) => {
+            setTramites((prev) => {
+              if (eventType === 'DELETE') {
+                return prev.filter((t) => t.id !== tramite.id);
+              }
+              const idx = prev.findIndex((t) => t.id === tramite.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = tramite;
+                return next;
+              }
+              return [tramite, ...prev];
+            });
+          },
+          (templateKey, base64) => {
+            saveDocxTemplateAsync(templateKey as any, base64, `${templateKey}.docx`);
+          }
+        );
+      } catch (err) {
+        console.warn('Error inicializando sincronización con Supabase:', err);
+      }
+    };
+
+    initSupabaseSync();
+
+    const handleConfigChange = () => {
+      if (unsubscribe) unsubscribe();
+      initSupabaseSync();
+    };
+
+    window.addEventListener('utea_supabase_config_changed', handleConfigChange);
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+      window.removeEventListener('utea_supabase_config_changed', handleConfigChange);
+    };
+  }, []);
+
+  // Listen for template changes to automatically back up templates to Google Drive & Supabase
+  useEffect(() => {
+    const handleTemplateUpdated = async (e: any) => {
       scheduleDriveAutoSync(1000);
+      try {
+        const key = e?.detail?.key;
+        if (key) {
+          const item = await getActiveDocxTemplateAsync(key);
+          if (item?.base64) {
+            await upsertTemplateToSupabase(key, item.fileName || `${key}.docx`, item.base64);
+          }
+        }
+      } catch (err) {
+        console.warn('Error sincronizando plantilla a Supabase:', err);
+      }
     };
     window.addEventListener('utea_templates_updated', handleTemplateUpdated);
     return () => {
@@ -95,6 +210,7 @@ export default function App() {
     const updated = [newStudent, ...students];
     setStudents(updated);
     saveStudents(updated);
+    upsertStudentToSupabase(newStudent);
     setActiveStudent(newStudent);
     setCurrentView('tramites');
   };
@@ -110,6 +226,7 @@ export default function App() {
     }
     setTramites(updatedList);
     saveTramites(updatedList);
+    upsertTramiteToSupabase(record);
   };
 
   // Update Student details (e.g. from Admin supervision)
@@ -117,6 +234,7 @@ export default function App() {
     const updatedList = students.map((s) => (s.id === updatedStudent.id ? updatedStudent : s));
     setStudents(updatedList);
     saveStudents(updatedList);
+    upsertStudentToSupabase(updatedStudent);
     if (activeStudent?.id === updatedStudent.id) {
       setActiveStudent(updatedStudent);
     }
@@ -136,6 +254,7 @@ export default function App() {
         isAdminLoggedIn={isAdminLoggedIn}
         onLogoutAdmin={handleLogoutAdmin}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
+        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -204,6 +323,7 @@ export default function App() {
                   setViewingDocState({ student, record });
                 }}
                 onOpenBackupModal={() => setIsBackupModalOpen(true)}
+                onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
               />
             )}
           </>
@@ -219,6 +339,20 @@ export default function App() {
         onDataRestored={(restoredStudents, restoredTramites) => {
           setStudents(restoredStudents);
           setTramites(restoredTramites);
+        }}
+      />
+
+      {/* Modal Conexión Supabase (Sincronización en tiempo real multi-máquina) */}
+      <SupabaseModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+        students={students}
+        tramites={tramites}
+        onDataLoadedFromSupabase={(loadedStudents, loadedTramites) => {
+          setStudents(loadedStudents);
+          setTramites(loadedTramites);
+          saveStudents(loadedStudents);
+          saveTramites(loadedTramites);
         }}
       />
 

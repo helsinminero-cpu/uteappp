@@ -43,6 +43,8 @@ import {
 } from '../utils/formatters';
 import { TemplateManagerModal } from './TemplateManagerModal';
 
+import { getSupabaseConfig } from '../lib/supabase';
+
 interface AdminPortalProps {
   students: Student[];
   tramites: TramiteRecord[];
@@ -53,6 +55,7 @@ interface AdminPortalProps {
   onUpdateStudent: (student: Student) => void;
   onOpenDocumentViewer: (student: Student, record: TramiteRecord) => void;
   onOpenBackupModal?: () => void;
+  onOpenSupabaseModal?: () => void;
 }
 
 const ADMIN_SECRET = 'AlexPalizaMorales2026UTEA';
@@ -67,6 +70,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onUpdateStudent,
   onOpenDocumentViewer,
   onOpenBackupModal,
+  onOpenSupabaseModal,
 }) => {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState(false);
@@ -458,7 +462,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {onOpenSupabaseModal && (
+            <button
+              onClick={onOpenSupabaseModal}
+              title="Conexión en la nube con Supabase (para que cualquier cambio sea para todos en tiempo real)"
+              className={`py-2 px-3 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1.5 shadow-2xs border ${
+                getSupabaseConfig().isConfigured
+                  ? 'bg-emerald-50/90 hover:bg-emerald-100 text-emerald-900 border-emerald-300'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+              }`}
+            >
+              <Database className={`w-3.5 h-3.5 ${getSupabaseConfig().isConfigured ? 'text-emerald-700' : 'text-slate-500'}`} />
+              <span>{getSupabaseConfig().isConfigured ? 'Supabase Conectado' : 'Conectar Supabase'}</span>
+              {getSupabaseConfig().isConfigured && (
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" title="Sincronización en tiempo real activa"></span>
+              )}
+            </button>
+          )}
+
           {onOpenBackupModal && (
             <button
               onClick={onOpenBackupModal}
