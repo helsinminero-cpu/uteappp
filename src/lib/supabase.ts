@@ -11,6 +11,59 @@ export interface SupabaseConfig {
 let cachedClient: SupabaseClient | null = null;
 let cachedConfig: SupabaseConfig | null = null;
 
+/**
+ * Cleans and formats Supabase Project URLs automatically:
+ * - Strips /rest/v1 or /auth/v1
+ * - Converts dashboard URLs (supabase.com/dashboard/project/xxx) into https://xxx.supabase.co
+ * - Converts plain project refs into https://xxx.supabase.co
+ * - Strips quotes, spaces and trailing slashes
+ */
+export function sanitizeSupabaseUrl(rawUrl: string): string {
+  if (!rawUrl) return '';
+  let url = rawUrl.trim().replace(/^['"`]|['"`]$/g, '').trim();
+
+  // 1. If user pasted Dashboard URL from browser address bar: https://supabase.com/dashboard/project/abcdefghijk...
+  const dashboardMatch = url.match(/supabase\.com\/dashboard\/project\/([a-zA-Z0-9_-]+)/i);
+  if (dashboardMatch && dashboardMatch[1]) {
+    return `https://${dashboardMatch[1]}.supabase.co`;
+  }
+
+  // 2. If user pasted just the 20-character reference code (e.g. mbzldtqygryqevgoyekc)
+  if (/^[a-z0-9]{15,25}$/i.test(url)) {
+    return `https://${url.toLowerCase()}.supabase.co`;
+  }
+
+  // 3. If user pasted standard supabase.co domain with trailing path (like /rest/v1 or /auth/v1)
+  const supabaseDomainMatch = url.match(/^(?:https?:\/\/)?([a-zA-Z0-9_-]+\.supabase\.co)(?:\/.*)?$/i);
+  if (supabaseDomainMatch && supabaseDomainMatch[1]) {
+    return `https://${supabaseDomainMatch[1].toLowerCase()}`;
+  }
+
+  // 4. For custom domains or localhost, remove any trailing /rest/v1 or trailing slashes
+  url = url.replace(/\/rest\/v1\/?$/i, '');
+  url = url.replace(/\/auth\/v1\/?$/i, '');
+  url = url.replace(/\/+$/, '');
+
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
+
+  return url;
+}
+
+/**
+ * Sanitizes Anon Public Key (removes accidental quotes, spaces, or labels)
+ */
+export function sanitizeSupabaseKey(rawKey: string): string {
+  if (!rawKey) return '';
+  let key = rawKey.trim().replace(/^['"`]|['"`]$/g, '').trim();
+  const jwtMatch = key.match(/(eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)/);
+  if (jwtMatch) {
+    return jwtMatch[1];
+  }
+  return key;
+}
+
 export function getSupabaseConfig(): SupabaseConfig {
   if (cachedConfig) return cachedConfig;
 
@@ -22,8 +75,8 @@ export function getSupabaseConfig(): SupabaseConfig {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      url = parsed.url?.trim() || '';
-      anonKey = parsed.anonKey?.trim() || '';
+      url = sanitizeSupabaseUrl(parsed.url || '');
+      anonKey = sanitizeSupabaseKey(parsed.anonKey || '');
     }
   } catch {
     // ignore
@@ -31,10 +84,10 @@ export function getSupabaseConfig(): SupabaseConfig {
 
   // 2. Fallback to Vite environment variables
   if (!url && typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) {
-    url = String(import.meta.env.VITE_SUPABASE_URL).trim();
+    url = sanitizeSupabaseUrl(String(import.meta.env.VITE_SUPABASE_URL));
   }
   if (!anonKey && typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) {
-    anonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY).trim();
+    anonKey = sanitizeSupabaseKey(String(import.meta.env.VITE_SUPABASE_ANON_KEY));
   }
 
   const isConfigured = Boolean(url && anonKey && url.startsWith('http'));
@@ -42,9 +95,9 @@ export function getSupabaseConfig(): SupabaseConfig {
   return cachedConfig;
 }
 
-export function saveSupabaseConfig(url: string, anonKey: string): void {
-  const cleanUrl = url.trim().replace(/\/+$/, '');
-  const cleanKey = anonKey.trim();
+export function saveSupabaseConfig(rawUrl: string, rawKey: string): void {
+  const cleanUrl = sanitizeSupabaseUrl(rawUrl);
+  const cleanKey = sanitizeSupabaseKey(rawKey);
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ url: cleanUrl, anonKey: cleanKey }));
@@ -122,14 +175,18 @@ export interface ConnectionTestResult {
   hasStudentsTable?: boolean;
   hasTramitesTable?: boolean;
   hasTemplatesTable?: boolean;
+  cleanedUrl?: string;
 }
 
 /**
  * Tests connection to Supabase and verifies required tables exist
  */
 export async function testSupabaseConnection(overrideUrl?: string, overrideKey?: string): Promise<ConnectionTestResult> {
-  const url = (overrideUrl || getSupabaseConfig().url).trim().replace(/\/+$/, '');
-  const key = (overrideKey || getSupabaseConfig().anonKey).trim();
+  const rawUrl = overrideUrl !== undefined ? overrideUrl : getSupabaseConfig().url;
+  const rawKey = overrideKey !== undefined ? overrideKey : getSupabaseConfig().anonKey;
+
+  const url = sanitizeSupabaseUrl(rawUrl);
+  const key = sanitizeSupabaseKey(rawKey);
 
   if (!url || !key) {
     return {
@@ -167,32 +224,55 @@ export async function testSupabaseConnection(overrideUrl?: string, overrideKey?:
         hasStudentsTable: true,
         hasTramitesTable: true,
         hasTemplatesTable,
+        cleanedUrl: url,
       };
     }
 
-    if (errStudents?.message?.includes('does not exist') || errTramites?.message?.includes('does not exist') || errStudents?.code === '42P01') {
+    // Check if error is missing tables (e.g. 42P01 or table does not exist)
+    const isMissingTables = 
+      errStudents?.message?.toLowerCase().includes('does not exist') || 
+      errTramites?.message?.toLowerCase().includes('does not exist') || 
+      errStudents?.code === '42P01' || 
+      errTramites?.code === '42P01' ||
+      errStudents?.code === 'PGRST204' ||
+      errTramites?.code === 'PGRST204';
+
+    if (isMissingTables) {
       return {
         success: false,
-        message: 'Conectado a Supabase pero las tablas (students, tramites) aún no han sido creadas. Ejecuta el script SQL en el editor de Supabase.',
+        message: 'Conectado al proyecto de Supabase, pero las tablas aún no existen. Ejecuta el Script SQL abajo en el SQL Editor de Supabase.',
         hasStudentsTable,
         hasTramitesTable,
         hasTemplatesTable,
+        cleanedUrl: url,
       };
     }
 
-    // Generic error
+    // Diagnostic on generic error
     const anyError = errStudents || errTramites || errTemplates;
+    let detailMsg = anyError?.message || 'Verifica la URL y la clave anon.';
+
+    if (detailMsg.includes('Invalid path specified in request URL')) {
+      detailMsg = 'La URL ingresada tenía rutas adicionales (como /rest/v1 o dashboard). La hemos corregido a "' + url + '". Vuelve a hacer clic en "Probar y Guardar Conexión".';
+    } else if (anyError?.code === 'PGRST301' || detailMsg.toLowerCase().includes('jwt') || detailMsg.includes('Invalid API key')) {
+      detailMsg = 'La clave pública (Anon Key) es inválida o ha expirado. Cópiala en Supabase > Project Settings > API > Project API keys (anon / public).';
+    } else if (detailMsg.includes('Failed to fetch') || detailMsg.includes('NetworkError')) {
+      detailMsg = 'Error de conexión: No se pudo contactar a Supabase. Verifica tu conexión a internet o que el proyecto no esté pausado.';
+    }
+
     return {
       success: false,
-      message: `Error al consultar Supabase: ${anyError?.message || 'Verifica la URL y la clave anon.'}`,
+      message: `Error al consultar Supabase: ${detailMsg}`,
       hasStudentsTable,
       hasTramitesTable,
       hasTemplatesTable,
+      cleanedUrl: url,
     };
   } catch (err: any) {
     return {
       success: false,
       message: `Error de red o conexión: ${err.message || 'No se pudo conectar a Supabase.'}`,
+      cleanedUrl: url,
     };
   }
 }

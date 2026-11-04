@@ -21,6 +21,8 @@ import {
   saveSupabaseConfig, 
   clearSupabaseConfig, 
   testSupabaseConnection, 
+  sanitizeSupabaseUrl,
+  sanitizeSupabaseKey,
   SUPABASE_INIT_SQL,
   ConnectionTestResult 
 } from '../lib/supabase';
@@ -55,6 +57,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showSqlPreview, setShowSqlPreview] = useState(false);
+  const [urlNotice, setUrlNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -63,6 +66,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
       setAnonKey(config.anonKey);
       setTestResult(null);
       setSyncStatus(null);
+      setUrlNotice(null);
 
       if (config.isConfigured) {
         // Run silent check
@@ -73,19 +77,56 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
 
   if (!isOpen) return null;
 
+  const handleUrlChange = (val: string) => {
+    setUrl(val);
+    const cleaned = sanitizeSupabaseUrl(val);
+    if (val.trim() && cleaned && cleaned !== val.trim()) {
+      setUrlNotice(`Se detectó formato con ruta extra. Se normalizará a: ${cleaned}`);
+    } else {
+      setUrlNotice(null);
+    }
+  };
+
+  const handleUrlBlur = () => {
+    if (url.trim()) {
+      const cleaned = sanitizeSupabaseUrl(url);
+      if (cleaned !== url.trim()) {
+        setUrl(cleaned);
+        setUrlNotice('✓ URL normalizada correctamente a https://[tu-proyecto].supabase.co');
+      }
+    }
+  };
+
+  const handleKeyBlur = () => {
+    if (anonKey.trim()) {
+      const cleaned = sanitizeSupabaseKey(anonKey);
+      if (cleaned !== anonKey.trim()) {
+        setAnonKey(cleaned);
+      }
+    }
+  };
+
   const handleTestAndSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsTesting(true);
     setTestResult(null);
     setSyncStatus(null);
 
-    const result = await testSupabaseConnection(url, anonKey);
+    const cleanUrl = sanitizeSupabaseUrl(url);
+    const cleanKey = sanitizeSupabaseKey(anonKey);
+    setUrl(cleanUrl);
+    setAnonKey(cleanKey);
+
+    const result = await testSupabaseConnection(cleanUrl, cleanKey);
+    if (result.cleanedUrl && result.cleanedUrl !== cleanUrl) {
+      setUrl(result.cleanedUrl);
+    }
     setTestResult(result);
     setIsTesting(false);
 
     if (result.success) {
-      saveSupabaseConfig(url, anonKey);
-      setSyncStatus('¡Configuración guardada y conexión activa! Ahora todos los cambios se compartirán entre todas las máquinas.');
+      saveSupabaseConfig(result.cleanedUrl || cleanUrl, cleanKey);
+      setSyncStatus('¡Configuración guardada y conexión activa! Ahora todos los cambios se compartirán entre todas las máquinas en tiempo real.');
     }
   };
 
@@ -237,13 +278,20 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
                 type="text"
                 required
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => handleUrlChange(e.target.value)}
+                onBlur={handleUrlBlur}
                 placeholder="https://xyzabcdefghijklmnopq.supabase.co"
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-transparent"
               />
-              <p className="text-[11px] text-slate-500 mt-1">
-                Encuéntralo en Supabase &gt; Project Settings &gt; API &gt; Project URL
-              </p>
+              {urlNotice ? (
+                <p className="text-[11px] text-emerald-700 font-medium mt-1 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                  {urlNotice}
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Copia el <strong>Project URL</strong> en: Supabase &gt; Project Settings &gt; API. (No incluyas <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700">/rest/v1</code> ni la URL del Dashboard).
+                </p>
+              )}
             </div>
 
             <div>
@@ -256,6 +304,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
                 required
                 value={anonKey}
                 onChange={(e) => setAnonKey(e.target.value)}
+                onBlur={handleKeyBlur}
                 placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-transparent"
               />
@@ -296,6 +345,19 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
               )}
             </div>
           </form>
+
+          {/* Explanation for 'Success. No rows returned' in SQL Editor */}
+          <div className="p-3.5 bg-emerald-50/80 border border-emerald-200/90 rounded-xl text-emerald-950 text-xs flex items-start gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-emerald-900">
+                ¿El Script SQL te arrojó &quot;Success. No rows returned&quot;?
+              </p>
+              <p className="text-emerald-900/90 leading-relaxed text-[11px]">
+                <strong>¡Eso es completamente normal y confirma que las tablas se crearon con éxito!</strong> En bases de datos PostgreSQL, las operaciones de creación de tablas (<code className="font-mono bg-emerald-100/80 px-1 py-0.5 rounded text-emerald-900">CREATE TABLE</code>, <code className="font-mono bg-emerald-100/80 px-1 py-0.5 rounded text-emerald-900">ALTER</code>) siempre devuelven &quot;Success. No rows returned&quot;. Con la URL limpia arriba, haz clic en <strong>&quot;Probar y Guardar Conexión&quot;</strong> y verás todas tus tablas en verde (✅ Lista).
+              </p>
+            </div>
+          </div>
 
           {/* Sync actions if configured */}
           {isConfigured && (
